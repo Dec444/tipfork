@@ -1,0 +1,31 @@
+{
+  "name": "tipfork",
+  "version": "1.0.0",
+  "description": "Snap a menu, split the bill, settle the tip.",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "start:backend": "node backend/server.js",
+    "copy:web": "mkdir -p www/assets/icons && cp client/index.html www/index.html && cp client/manifest.webmanifest client/sw.js www/ && cp client/assets/icons/* www/assets/icons/",
+    "cap:init": "cap init TipFork com.tipfork.app --web-dir www",
+    "add:ios": "cap add ios",
+    "add:android": "cap add android",
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/camera": "^6.0.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/geolocation": "^6.0.0",
+    "braintree": "^3.38.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0",
+    "@capacitor/ios": "^6.1.0"
+  }
+}
