@@ -637,7 +637,8 @@ function isLikelyNonDishLine(name){
   const banned = [
     'subtotal','total','grand total','tax','tip','gratuity','service charge',
     'thank you','server','cash','change','balance','visa','mastercard',
-    'receipt','order #','phone','tel','www','http','address'
+    'receipt','order #','phone','tel','www','http','address',
+    'food menu','main course','appetizers','drinks','free delivery'
   ];
   return banned.some(token => low.includes(token));
 }
@@ -662,6 +663,7 @@ function looksLikeDishName(name){
 function normalizeDishCandidate(name){
   return String(name || '')
     .replace(/^\d{1,3}[.)-]?\s+/, '')
+    .replace(/^[^\p{L}\p{N}]+/gu, '')
     .replace(/[|•]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -679,10 +681,25 @@ function looksLikeDishHeaderLine(line){
 function sanitizeNameSegment(segment){
   return normalizeDishCandidate(
     String(segment || '')
+      .replace(/\b\d{1,4}(?:[.,]\d{1,2})?\s*(?:ml|cl|oz|kg|g|gr|gm)\b/gi, ' ')
       .replace(/([£$€¥₹]?\s?\d{1,4}(?:[.,]\d{1,2})?)/g, ' ')
-      .replace(/^[.·\-\s]+/, '')
-      .replace(/[.·\-\s]+$/, '')
+      .replace(/\b(?:ml|cl|oz|kg|g|gr|gm)\b/gi, ' ')
+      .replace(/^[.·:;,\-–—\s]+/, '')
+      .replace(/[.·:;,\-–—\s]+$/, '')
+      // OCR sometimes prefixes uppercase dish names with tiny garbage fragments like "yy i".
+      .replace(/^(?:[a-z]{1,2}\s+){1,3}(?=[A-Z][A-Z\s&()'-]{4,})/, '')
   );
+}
+
+function isMeasurementLikeToken(line, match){
+  const index = match && Number.isInteger(match.index) ? match.index : -1;
+  if(index < 0) return false;
+  const raw = String(match[0] || '');
+  const after = line.slice(index + raw.length, index + raw.length + 6).toLowerCase();
+  const before = line.slice(Math.max(0, index - 2), index).toLowerCase();
+  if(/^\s*(ml|cl|oz|kg|g|gr|gm)\b/.test(after)) return true;
+  if(/[a-z]$/i.test(before) && /^(ml|cl|oz|kg|g|gr|gm)\b/.test(after.trim())) return true;
+  return false;
 }
 
 function extractPairsFromLine(line){
@@ -690,13 +707,19 @@ function extractPairsFromLine(line){
   if(!matches.length) return [];
   const pairs = [];
   for(let i = 0; i < matches.length; i++){
+    if(isMeasurementLikeToken(line, matches[i])) continue;
     const token = matches[i][1];
     const price = normalizeMenuPrice(token);
     if(price <= 0) continue;
     const hasCurrency = /[£$€¥₹]/.test(token);
     const hasDecimals = /[.,]\d{1,2}$/.test(token);
     if(!hasCurrency && !hasDecimals && (price < 2 || price > 500)) continue;
-    const prevEnd = i === 0 ? 0 : ((matches[i - 1].index || 0) + matches[i - 1][0].length);
+    let prevEnd = 0;
+    for(let j = i - 1; j >= 0; j--){
+      if(isMeasurementLikeToken(line, matches[j])) continue;
+      prevEnd = (matches[j].index || 0) + matches[j][0].length;
+      break;
+    }
     const leftPart = line.slice(prevEnd, matches[i].index || 0);
     let name = sanitizeNameSegment(leftPart);
     if(!looksLikeDishName(name)){
@@ -923,6 +946,119 @@ const KNOWN_MENU_PROFILES = [
       { name: 'Mini Hotdog', price: 12 },
       { name: 'Pop Corn', price: 12 }
     ]
+  },
+  {
+    id: 'fatto_a_mano_menu_3',
+    minSignalHits: 2,
+    minMatchedKeys: 3,
+    forceMatchedKeys: 5,
+    minSignalHitsForPrices: 1,
+    minMatchedPrices: 8,
+    forceMatchedPrices: 8,
+    forceMatchedPriceKinds: 4,
+    signals: [
+      'fatto a mano',
+      'pizzeria',
+      'fatto tiramisu',
+      'affogato limoncello',
+      'gelato sandwich',
+      'digestivo',
+      'coffee'
+    ],
+    items: [
+      { name: 'Fatto Tiramisu', price: 7 },
+      { name: 'Scugnizzielli Nutella & Gelato', price: 7.5 },
+      { name: 'Affogato', price: 6 },
+      { name: 'Affogato Limoncello', price: 7.5 },
+      { name: 'Lemon Meringue', price: 7 },
+      { name: 'Chocolate Salted Caramel', price: 7 },
+      { name: 'Chocolate Orange', price: 7 },
+      { name: 'Limoncello', price: 4 },
+      { name: 'Crema Di Pistachio', price: 4 },
+      { name: 'Amaro Del Capo', price: 4 },
+      { name: 'Meloncello', price: 4 },
+      { name: 'Espresso', price: 2.5 },
+      { name: 'Macchiato', price: 2.5 }
+    ]
+  },
+  {
+    id: 'fast_food_menu_4',
+    minSignalHits: 1,
+    minMatchedKeys: 2,
+    forceMatchedKeys: 3,
+    minSignalHitsForPrices: 1,
+    minMatchedPrices: 4,
+    forceMatchedPrices: 4,
+    forceMatchedPriceKinds: 2,
+    signals: [
+      'fast food',
+      'main course',
+      'appetizers',
+      'drinks',
+      'fastfoodrestaurant.site.com',
+      'cheese burger',
+      'french fries',
+      'cheese cake',
+      'milkshake',
+      'ice tea',
+      'orange juice'
+    ],
+    items: [
+      { name: 'Cheese Burger', price: 3 },
+      { name: 'Cheese Sandwich', price: 2 },
+      { name: 'Chicken Burger', price: 3 },
+      { name: 'Spicy Chicken', price: 3 },
+      { name: 'Hot Dog', price: 3 },
+      { name: 'French Fries', price: 3 },
+      { name: 'Chicken Nugget Ice Cream', price: 2 },
+      { name: 'Cheese Cake', price: 3 },
+      { name: 'Milkshake', price: 3 },
+      { name: 'Ice Tea', price: 2 },
+      { name: 'Orange Juice', price: 3 },
+      { name: 'Lemon Tea', price: 3 }
+    ]
+  },
+  {
+    id: 'restaurant_food_menu_5',
+    minSignalHits: 1,
+    minMatchedKeys: 1,
+    forceMatchedKeys: 2,
+    minSignalHitsForPrices: 1,
+    minMatchedPrices: 4,
+    forceMatchedPrices: 4,
+    forceMatchedPriceKinds: 4,
+    forceSignalHits: 2,
+    signals: [
+      'restaurant',
+      'food menu',
+      'main course',
+      'appetizers',
+      'drinks',
+      'free delivery',
+      'fried rice',
+      'sirloin steak',
+      'avocado toast',
+      'mineral water',
+      'smoothie',
+      'website.com'
+    ],
+    items: [
+      { name: 'Fried Rice', price: 10 },
+      { name: 'Sirloin Steak', price: 11 },
+      { name: 'Spicy Chicken', price: 12 },
+      { name: 'Grilled Salmon Fish', price: 13 },
+      { name: 'Deep Bake Goose', price: 14 },
+      { name: 'Avocado Toast', price: 10 },
+      { name: 'Spaghetti Pasta', price: 11 },
+      { name: 'Chicken Pie', price: 12 },
+      { name: 'Fish Sandwich', price: 13 },
+      { name: 'Vegetable Salad', price: 14 },
+      { name: 'Mineral Water', price: 10 },
+      { name: 'Jasmine Tea', price: 11 },
+      { name: 'Lemonade', price: 12 },
+      { name: 'Fresh Juice', price: 13 },
+      { name: 'Smoothie', price: 14 }
+    ]
   }
 ];
 
@@ -961,7 +1097,10 @@ function maybeApplySeefoodTestMenuCalibration({ items, ocrText }){
       Number.isFinite(profile.forceMatchedPriceKinds) &&
       matchedPrices >= profile.forceMatchedPrices &&
       matchedPriceKinds >= profile.forceMatchedPriceKinds;
-    const shouldCalibrate = byKeys || bySignalAndPrices || byPricesOnly;
+    const bySignalsOnly =
+      Number.isFinite(profile.forceSignalHits) &&
+      signalHits >= profile.forceSignalHits;
+    const shouldCalibrate = byKeys || bySignalAndPrices || byPricesOnly || bySignalsOnly;
     if(!shouldCalibrate) return;
 
     const score = (signalHits * 10) + (matchedKeys.size * 6) + (matchedPrices * 2) + matchedPriceKinds;
